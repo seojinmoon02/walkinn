@@ -15,7 +15,7 @@
     }
 
     body {
-      margin: 0;
+      gridMargin: 0;
       padding: 0;
       min-height: 100vh;
       display: flex;
@@ -28,7 +28,7 @@
 
     /* 캔버스 영역 – 비율/사이즈는 그대로, 외곽선만 SVG 스타일 */
     main {
-      margin-top: 18px;
+      gridMargin-top: 18px;
     }
     main canvas {
       background: #ffffff;
@@ -39,7 +39,7 @@
     #ui {
       width: 700px;
       max-width: 95vw;
-      margin-top: 10px;
+      gridMargin-top: 10px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -144,6 +144,7 @@
         <button id="backBtn" class="secondary">← Back</button>
         <button id="resetBtn" class="secondary">Reset</button>
         <button id="undoBtn" class="secondary">Undo</button>  <!-- ★ 추가 -->
+        <button id="langBtn" class="secondary">EN</button>
         <button id="checkBtn">Check Answer</button>
       </div>
     </div>
@@ -160,11 +161,66 @@
   </div>
 
   <script>
+        const LANG = {
+        en: {
+                status: {
+                start: "Begin your journey from the START marker. Chart your path across the grid.",
+                reset: "Your route has been cleared. You’re ready to set off again.",
+                split: "Path split — your next move will become a leap (J).",
+                nearOnly: "You can only travel to nearby points. Try a step within reach.",
+                noAnswer: "No official route is set for this TRIP yet.",
+                correct: "Journey complete! 🎉 Your path matches the official route.",
+                wrong: "This route doesn’t match the official path. Try exploring again.",
+                undo: "Your last step has been undone."
+                },
+            instructions: `
+        <b>Mouse Controls</b><br>
+        • Click nearby points to draw your route across the grid.<br>
+        • Move up, down, left, right, or diagonally.<br>
+        • Double-click to break the route — the next move becomes a leap (J).<br>
+        • Press <b>Check Route</b> when you're done exploring.
+        `,
+            trip: n => `TRIP ${n}`
+        },
+
+        kr: {
+            status: {
+            start: "START 지점에서 당신의 여정을 시작하세요. 그리드를 따라 길을 개척해보세요.",
+            reset: "경로가 초기화되었습니다. 다시 여정을 시작할 수 있어요.",
+            split: "선이 끊겼습니다. 다음 점부터 점프(J) 구간으로 인식됩니다.",
+            nearOnly: "인접한 점(상하좌우/대각선)으로만 이동할 수 있습니다.",
+            noAnswer: "이 TRIP은 아직 정답 경로가 설정되지 않았습니다.",
+            correct: "여정 완료! 🎉 당신의 경로가 정답과 일치합니다.",
+            wrong: "이 경로는 정답과 일치하지 않아요. 다시 탐험해보세요.",
+            undo: "마지막 움직임을 취소했습니다."
+            },
+            instructions: `
+        <b>마우스 조작</b><br>
+        • 인접한 점들을 클릭해 그리드 위에 여정을 그립니다.<br>
+        • 상하좌우 및 대각선으로 이동할 수 있어요.<br>
+        • 더블클릭하면 길이 끊어지며, 다음 이동은 점프(J)가 됩니다.<br>
+        • 탐험을 마치면 <b>정답 확인</b> 버튼을 눌러보세요.
+        `,
+            trip: n => `TRIP ${n}`
+        }
+        };
+
+
+        let currentLang = "en";
+
     // ====== CONFIG ======
-    const GRID_SIZE   = 11;
-    const CANVAS_SIZE = 700;
-    const MARGIN      = 60;
-    const CLICK_RADIUS = 16;
+
+// ====== GLOBAL STATE ======
+  // ====== 캔버스 / 그리드 기본 설정 ======
+const GRID_SIZE        = 11;
+const BASE_CANVAS_SIZE = 700;  // 데스크탑에서 최대 크기
+const BASE_MARGIN      = 60;
+const CLICK_RADIUS     = 16;
+
+let canvasSize = BASE_CANVAS_SIZE;
+let gridMargin = BASE_MARGIN;
+let spacing;
+
 
     // 답안: 나중에 네가 채워 넣을 곳
     // 예시 형태: "1": ["F","RFD","F","LT","J","F"]
@@ -241,35 +297,60 @@
     const ALL_CODES  = ["F","L","R","B","J","LFD","RFD","LBD","RBD","LT","RT"];
 
     // ====== GLOBAL STATE ======
-    let spacing;
-    let points = [];
-    let segments = [];
-    let activeSegment = null;
-    let currentPointIndex = null;
-    let startPoint = null;
 
-    let level = 1;
 
-    let statusDiv, backBtn, resetBtn, checkBtn, levelTitle, undoBtn;
-    let resultMode = null; // "correct" | "wrong" | null
-    let resultTimer = 0;
-    let confetti = [];
+// ====== GLOBAL STATE ======
+let points = [];
+let segments = [];
+let activeSegment = null;
+let currentPointIndex = null;
+let startPoint = null;
+
+let level = 1;
+
+let statusDiv, backBtn, resetBtn, checkBtn, levelTitle, undoBtn, langBtn;
+let resultMode = null; // "correct" | "wrong" | null
+let resultTimer = 0;
+let confetti = [];
+
 
     
 
     // ====== P5 SETUP / DRAW ======
-    function setup() {
-      const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
-      canvas.parent(document.querySelector("main"));
-      spacing = (width - 2 * MARGIN) / (GRID_SIZE - 1);
 
-      textFont("system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
 
-      initGrid();
-      initLevelFromQuery();
-      cacheDom();
-      initGameState();
-    }
+
+        function updateCanvasSize() {
+        // 화면 가로/세로에 맞춰 캔버스 한 변 길이 계산
+        const sizeByWidth  = windowWidth * 0.9;   // 좌우 여백 10%
+        const sizeByHeight = windowHeight * 0.55; // 아래 UI 영역 남겨두기
+
+        canvasSize = Math.min(BASE_CANVAS_SIZE, sizeByWidth, sizeByHeight);
+
+        // 마진도 비율대로 줄이기
+        gridMargin = (BASE_MARGIN / BASE_CANVAS_SIZE) * canvasSize;
+
+        resizeCanvas(canvasSize, canvasSize);
+
+        // spacing & 포인트 좌표 갱신
+        spacing = (canvasSize - 2 * gridMargin) / (GRID_SIZE - 1);
+        initGrid();
+        }
+
+function setup() {
+  // 일단 임시 크기로 만든 뒤, updateCanvasSize에서 실제 크기 맞추기
+  const canvas = createCanvas(BASE_CANVAS_SIZE, BASE_CANVAS_SIZE);
+  canvas.parent(document.querySelector("main"));
+
+  textFont("system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+
+  updateCanvasSize();        // 화면 크기에 맞게 캔버스/그리드 조정
+  initLevelFromQuery();
+  cacheDom();
+  initGameState();
+}
+
+
 
     function draw() {
       background('#ef4136');
@@ -296,7 +377,8 @@ function cacheDom() {
   levelTitle  = document.getElementById("levelTitle");
   undoBtn     = document.getElementById("undoBtn");  // ★ 추가
 
-  levelTitle.textContent = `TRIP 0${level}`;
+const L = LANG[currentLang];
+levelTitle.textContent = L.trip(level);
 
   backBtn.addEventListener("click", () => {
     window.location.href = "landing.html";
@@ -304,7 +386,7 @@ function cacheDom() {
 
   resetBtn.addEventListener("click", () => {
     initGameState();
-    setStatus("경로를 다시 그릴 수 있습니다.");
+    setStatus("reset");
   });
 
   checkBtn.addEventListener("click", onCheckAnswer);
@@ -321,7 +403,30 @@ function cacheDom() {
       undoLastStep();
     }
   });
+
+    langBtn = document.getElementById("langBtn");
+    langBtn.addEventListener("click", () => {
+        currentLang = currentLang === "en" ? "kr" : "en";
+        langBtn.textContent = currentLang.toUpperCase();
+        applyLanguage();
+    });
+
 }
+
+function applyLanguage() {
+  const L = LANG[currentLang];
+
+  // TRIP 제목
+  levelTitle.textContent = L.trip(level);
+
+  // 상태 문구는 공용 함수로 처리
+  setStatus("start");
+
+  // 안내 문구
+  document.getElementById("instructions").innerHTML = L.instructions;
+}
+
+
 
     function initGameState() {
       segments = [];
@@ -341,26 +446,26 @@ function cacheDom() {
       segments.push(activeSegment);
       currentPointIndex = idx;
 
-      setStatus("Draw your path starting from START.");
+      setStatus("start");
+
+      applyLanguage();
+
 
     }
 
-    function setStatus(msg) {
-      if (statusDiv) statusDiv.textContent = msg;
-    }
+function setStatus(keyOrMsg) {
+  if (!statusDiv) return;
+  const L = LANG[currentLang];
 
-    // ====== GRID & POINTS ======
-    function initGrid() {
-      points = [];
-      for (let i = 0; i < GRID_SIZE; i++) {
-        for (let j = 0; j < GRID_SIZE; j++) {
-          const x = MARGIN + j * spacing;
-          const y = MARGIN + i * spacing;
-          const index = i * GRID_SIZE + j;
-          points.push({ x, y, i, j, index });
-        }
-      }
-    }
+  // LANG.status 안에 같은 키가 있으면 그걸 사용
+  if (L && L.status && L.status[keyOrMsg]) {
+    statusDiv.textContent = L.status[keyOrMsg];
+  } else {
+    // 없으면 그냥 원래 문자열 그대로 (디버그용)
+    statusDiv.textContent = keyOrMsg;
+  }
+}
+
 
     function indexToIJ(index) {
       const i = Math.floor(index / GRID_SIZE);
@@ -597,7 +702,7 @@ function compareSteps(ansSteps, playerSteps) {
 function onCheckAnswer() {
   const ans = ANSWER_CODES[level];
   if (!ans || !Array.isArray(ans) || ans.length === 0) {
-    setStatus("아직 이 레벨의 정답 코드가 설정되지 않았습니다.");
+    setStatus("noAnswer");
     return;
   }
 
@@ -628,17 +733,18 @@ function onCheckAnswer() {
   // 3) 두 step 배열을 비교 (좌표 기준)
   const ok = compareSteps(decoded.steps, playerSteps);
 
-  if (ok) {
+    if (ok) {
     resultMode = "correct";
     resultTimer = 180;
     spawnConfetti();
-    setStatus("Correct! 🎉");
-  } else {
+    setStatus("correct");
+    } else {
     resultMode = "wrong";
     resultTimer = 180;
     confetti = [];
-    setStatus("Incorrect. Try again.");
-  }
+    setStatus("wrong");
+    }
+
 }
 
     function compareCommands(ans, player) {
@@ -660,13 +766,14 @@ function onCheckAnswer() {
     }
 
         function doubleClicked() {
-        if (currentPointIndex != null) {
-            activeSegment = null;
-            currentPointIndex = null;  // ★ 이 줄 추가
-            setStatus("선이 끊겼습니다. 다음 점부터 점프(J) 구간으로 인식됩니다.");
-        }
-        return false;
-        }
+    if (currentPointIndex != null) {
+        activeSegment = null;
+        currentPointIndex = null;
+        setStatus("split");
+    }
+    return false;
+    }
+        
 
 
     function findClickedPoint(mx, my) {
@@ -707,7 +814,7 @@ function onCheckAnswer() {
         Math.abs(dj) > 1 ||
         (di === 0 && dj === 0)
     ) {
-        setStatus("인접한 점(상하좌우/대각선)으로만 이동할 수 있습니다.");
+        setStatus("nearOnly");
         return;
     }
 
@@ -728,7 +835,8 @@ function onCheckAnswer() {
     // ✅ 그리드 배경 (원하면 여기 색 바꾸면 됨! 예: 아주 연한 아이보리)
     noStroke();
     fill(255, 250, 245); // 원하는 색으로 변경 가능
-    rect(MARGIN, MARGIN, width - 2 * MARGIN, height - 2 * MARGIN);
+    rect(gridMargin, gridMargin, width - 2 * gridMargin, height - 2 * gridMargin);
+
 
     // ✅ 점선 설정
     stroke(255, 200, 195);      // 연한 빨강 계열
@@ -736,16 +844,16 @@ function onCheckAnswer() {
     drawingContext.setLineDash([4, 4]); // [선 길이, 공백 길이]
 
     // 가로선
-    for (let i = 0; i < GRID_SIZE; i++) {
-        const y = MARGIN + i * spacing;
-        line(MARGIN, y, width - MARGIN, y);
-    }
+   for (let i = 0; i < GRID_SIZE; i++) {
+  const y = gridMargin + i * spacing;
+  line(gridMargin, y, width - gridMargin, y);
+}
 
     // 세로선
-    for (let j = 0; j < GRID_SIZE; j++) {
-        const x = MARGIN + j * spacing;
-        line(x, MARGIN, x, height - MARGIN);
-    }
+ for (let j = 0; j < GRID_SIZE; j++) {
+  const x = gridMargin + j * spacing;
+  line(x, gridMargin, x, height - gridMargin);
+}
 
     // ✅ 다른 그리기에는 점선 안 먹도록 리셋
     drawingContext.setLineDash([]);
@@ -838,7 +946,7 @@ function onCheckAnswer() {
 
       const cx = width / 2;
       const cy = height / 2;
-      const gridW = width - 2 * MARGIN;
+      const gridW = width - 2 * gridMargin;
       const baseR = gridW * 0.45;
 
       if (resultMode === "correct") {
@@ -924,7 +1032,7 @@ function onCheckAnswer() {
   resultTimer = 0;
   confetti = [];
 
-  setStatus("마지막 움직임을 취소했습니다.");
+  setStatus("undo");
 }
 
 
@@ -942,6 +1050,19 @@ function onCheckAnswer() {
         }
       }
     }
+
+    function initGrid() {
+  points = [];
+  let idx = 0;
+  for (let i = 0; i < GRID_SIZE; i++) {
+    for (let j = 0; j < GRID_SIZE; j++) {
+      const x = gridMargin + j * spacing;
+      const y = gridMargin + i * spacing;
+      points.push({ x, y, i, j, index: idx++ });
+    }
+  }
+}
+
   </script>
 </body>
 </html>
