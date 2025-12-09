@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Code Path – Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f4f4;
+    }
+    main {
+      margin-top: 18px;
+    }
+    #ui {
+      width: 700px;
+      max-width: 95vw;
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 14px;
+    }
+    #topRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 6px;
+    }
+    #levelTitle {
+      font-weight: 700;
+      font-size: 18px;
+    }
+    #buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      background: #111827;
+      color: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      white-space: nowrap;
+    }
+    button.secondary {
+      background: #6b7280;
+    }
+    button:hover {
+      filter: brightness(1.05);
+    }
+    #status {
+      padding: 6px 10px;
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    #instructions {
+      padding: 8px 10px;
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      line-height: 1.5;
+    }
+    #instructions b {
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main></main>
+
+  <div id="ui">
+    <div id="topRow">
+      <div>
+        <div id="levelTitle">Level ?</div>
+      </div>
+      <div id="buttons">
+        <button id="backBtn" class="secondary">← Back</button>
+        <button id="resetBtn" class="secondary">Reset</button>
+        <button id="checkBtn">정답 확인</button>
+      </div>
+    </div>
+
+    <div id="status">START에서 시작해서 마우스로 경로를 그려보세요.</div>
+
+    <div id="instructions">
+      <b>마우스 조작</b><br>
+      - 녹색 START 점에서 인접한 점을 클릭해 선을 이어 나갑니다.<br>
+      - 바로 앞 점에서 위·아래·좌·우·대각선으로만 이동할 수 있습니다.<br>
+      - 더블클릭하면 선이 끊기고, 다음 클릭부터는 점프(J)가 됩니다.<br>
+      - 모두 그린 뒤 <b>정답 확인</b> 버튼을 누르세요.
+    </div>
+  </div>
+
+  <script>
+    // ====== CONFIG ======
+    const GRID_SIZE   = 11;
+    const CANVAS_SIZE = 700;
+    const MARGIN      = 60;
+    const CLICK_RADIUS = 16;
+
+    // 답안: 나중에 네가 채워 넣을 곳
+    // 예시 형태: "1": ["F","RFD","F","LT","J","F"]
+        const ANSWER_CODES = {
+        1: [
+            "J","J","L","F","L","F","RBD","F","LBD","RBD","F","RFD","F","F","F","RFD","F","RBD","LBD","F","RBD","F","L","F","R","F","R","F","L","F","L","F","R","F","LT","LT","J","J"
+        ],
+        2: [
+            "J","J","F","RFD","F","LBD","F","LFD","RBD","RFD","LBD","LFD","RBD","LFD","F","R","R","R","F","LFD","RBD","LFD","LBD","RFD","RBD","LFD","F","LBD","F","RFD","L","F","F","LT","LT","J","LFD","R","R","R","LT","J","L","F","F","J","J"
+        ],
+        3: [
+            "F","L","F","L","RT","RT","J","R","F","R","F","L","L","F","R","RT","RT","J","F","F","L","F","L","F","L","F","RT","RT","J","R","F","F","R","F","L","L","F","R","F","RT","RT","J","R","L","F","L"
+        ],
+        4: [
+            "F","F","L","F","R","F","F","R","L","R","L","RFD","LFD","F","B","F","LFD","RFD","L","R","L","R","F","RT","RT","J","F","F","F","F","R","R","F","F","F","R","LT","LT","J","R","R","F","L","F"
+        ],
+        5: [
+            "J","J","R","L","F","F","F","F","F","L","F","F","F","F","F","L","F","F","F","F","F","L","F","F","F","F","LT","LT","J","F","F","F","F","L","F","F","F","L","F","F","F","L","F","F","F","J","J","J"
+        ],
+        6: [
+            "J","J","LFD","LFD","R","LFD","R","LFD","R","LFD","R","LFD","R","LFD","R","LFD","R","LFD","J","J"
+        ],
+        7: [
+            "J","F","F","L","F","F","R","R","F","F","L","L","F","F","R","R","F","F","L","L","F","F","R","R","F","F","L","L","F","F","F","F","L","F","F","F","F","F","F","F","L","F","F","F","F","J","J"
+        ],
+        8: [
+            "R","F","LFD","F","F","F","F","L","F","F","L","F","LFD","F","RFD","F","RFD","L","F","L","LT","LT","J","R","F","LFD","F","F","F","L","LBD","F","RT","RT","J","J","F","LFD","LBD","RT","RT","RT","J","J","J"
+        ],
+        9: [
+            "J","J","F","F","F","F","F","F","R","F","F","F","RFD","F","RFD","F","RFD","F","RFD","F","F","F","RT","RT","RT","J","J","LFD","F","R","F","R","F","R","F","LT","LT","J","J","J","J"
+        ],
+        10: [
+            "J","J","J","F","F","R","F","RBD","F","R","F","RBD","F","F","F","F","F","F","LBD","F","F","LFD","F","F","F","LFD","F","F","LBD","F","F","RT","RT","RT","J","J","J"
+        ],
+        11: [
+            "LFD","F","LFD","RFD","F","R","F","L","R","F","F","RFD","R","F","F","F","F","F","F","F","F","F"
+        ],
+        12: [
+            "J","F","F","F","F","F","F","F","F","RBD","F","F","F","LFD","F","LFD","F","RBD","F","F","F","RBD","F","LFD","F","LFD","F","F","F","RT","J"
+        ],
+        };
+
+
+    // 각 레벨별 START 위치 (격자 index: i, j)
+    // 기본값으로 "맨 위 중앙"으로 넣어둠. 나중에 변경 가능.
+    const START_POINTS = {
+      1: { i: 8, j: 0 },
+      2: { i: 0, j: 5 },
+      3: { i: 0, j: 5 },
+      4: { i: 0, j: 5 },
+      5: { i: 0, j: 5 },
+      6: { i: 0, j: 5 },
+      7: { i: 0, j: 5 },
+      8: { i: 0, j: 5 },
+      9: { i: 0, j: 5 },
+      10:{ i: 0, j: 5 },
+      11:{ i: 0, j: 5 },
+      12:{ i: 0, j: 5 },
+    };
+
+    // 0: N, 1: NE, 2: E, 3: SE, 4: S, 5: SW, 6: W, 7: NW
+    const ORI_DIRS = [
+      { di: -1, dj:  0 }, // N
+      { di: -1, dj:  1 }, // NE
+      { di:  0, dj:  1 }, // E
+      { di:  1, dj:  1 }, // SE
+      { di:  1, dj:  0 }, // S
+      { di:  1, dj: -1 }, // SW
+      { di:  0, dj: -1 }, // W
+      { di: -1, dj: -1 }, // NW
+    ];
+
+    const DRAW_CODES = ["F", "L", "R", "B", "LFD", "RFD", "LBD", "RBD"];
+    const ALL_CODES  = ["F","L","R","B","J","LFD","RFD","LBD","RBD","LT","RT"];
+
+    // ====== GLOBAL STATE ======
+    let spacing;
+    let points = [];
+    let segments = [];
+    let activeSegment = null;
+    let currentPointIndex = null;
+    let startPoint = null;
+
+    let level = 1;
+
+    let statusDiv, backBtn, resetBtn, checkBtn, levelTitle;
+    let resultMode = null; // "correct" | "wrong" | null
+    let resultTimer = 0;
+    let confetti = [];
+
+    // ====== P5 SETUP / DRAW ======
+    function setup() {
+      const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+      canvas.parent(document.querySelector("main"));
+      spacing = (width - 2 * MARGIN) / (GRID_SIZE - 1);
+
+      textFont("system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+
+      initGrid();
+      initLevelFromQuery();
+      cacheDom();
+      initGameState();
+    }
+
+    function draw() {
+      background(240);
+      drawGrid();
+      drawSegments();
+      drawPoints();
+      drawStartMarker();
+      drawResultOverlay();
+      drawConfetti();
+    }
+
+    // ====== INIT / DOM ======
+    function initLevelFromQuery() {
+      const q = new URLSearchParams(window.location.search);
+      const lv = parseInt(q.get("level"), 10);
+      level = (!isNaN(lv) && lv >= 1 && lv <= 12) ? lv : 1;
+    }
+
+    function cacheDom() {
+      statusDiv   = document.getElementById("status");
+      backBtn     = document.getElementById("backBtn");
+      resetBtn    = document.getElementById("resetBtn");
+      checkBtn    = document.getElementById("checkBtn");
+      levelTitle  = document.getElementById("levelTitle");
+
+      levelTitle.textContent = `Level ${level}`;
+
+      backBtn.addEventListener("click", () => {
+        window.location.href = "landing.html";
+      });
+
+      resetBtn.addEventListener("click", () => {
+        initGameState();
+        setStatus("경로를 다시 그릴 수 있습니다.");
+      });
+
+      checkBtn.addEventListener("click", onCheckAnswer);
+    }
+
+    function initGameState() {
+      segments = [];
+      activeSegment = null;
+      currentPointIndex = null;
+      resultMode = null;
+      resultTimer = 0;
+      confetti = [];
+
+      // START 설정
+      const sp = START_POINTS[level] || { i: 0, j: Math.floor(GRID_SIZE/2) };
+      const idx = ijToIndex(sp.i, sp.j);
+      startPoint = points[idx];
+
+      // 첫 segment는 START에서 시작
+      activeSegment = { points: [idx] };
+      segments.push(activeSegment);
+      currentPointIndex = idx;
+
+      setStatus("START에서부터 경로를 그려보세요.");
+    }
+
+    function setStatus(msg) {
+      if (statusDiv) statusDiv.textContent = msg;
+    }
+
+    // ====== GRID & POINTS ======
+    function initGrid() {
+      points = [];
+      for (let i = 0; i < GRID_SIZE; i++) {
+        for (let j = 0; j < GRID_SIZE; j++) {
+          const x = MARGIN + j * spacing;
+          const y = MARGIN + i * spacing;
+          const index = i * GRID_SIZE + j;
+          points.push({ x, y, i, j, index });
+        }
+      }
+    }
+
+    function indexToIJ(index) {
+      const i = Math.floor(index / GRID_SIZE);
+      const j = index % GRID_SIZE;
+      return { i, j };
+    }
+
+    function ijToIndex(i, j) {
+      return i * GRID_SIZE + j;
+    }
+
+    function isOnEdge(i, j) {
+      return (
+        i === 0 ||
+        j === 0 ||
+        i === GRID_SIZE - 1 ||
+        j === GRID_SIZE - 1
+      );
+    }
+
+    function initialOrientationForStart(i, j) {
+      if (i === 0)             return 4; // top → S
+      if (i === GRID_SIZE - 1) return 0; // bottom → N
+      if (j === 0)             return 2; // left → E
+      if (j === GRID_SIZE - 1) return 6; // right → W
+      return 4;
+    }
+
+    // ====== COMMAND APPLY / ENCODE ======
+    function applyCommand(ori, code) {
+      let newOri = ori;
+      let stepOri = ori;
+      let type = "draw";
+
+      switch (code) {
+        case "F":
+          stepOri = ori;
+          break;
+        case "B":
+          newOri = (ori + 4) % 8;
+          stepOri = newOri;
+          break;
+        case "L":
+          newOri = (ori + 6) % 8;
+          stepOri = newOri;
+          break;
+        case "R":
+          newOri = (ori + 2) % 8;
+          stepOri = newOri;
+          break;
+        case "J":
+          stepOri = ori;
+          type = "jump";
+          break;
+        case "LFD":
+          newOri = (ori + 7) % 8;
+          stepOri = newOri;
+          break;
+        case "RFD":
+          newOri = (ori + 1) % 8;
+          stepOri = newOri;
+          break;
+        case "LBD":
+          newOri = (ori + 5) % 8;
+          stepOri = newOri;
+          break;
+        case "RBD":
+          newOri = (ori + 3) % 8;
+          stepOri = newOri;
+          break;
+        case "LT":
+          newOri = (ori + 7) % 8;
+          stepOri = ori; // 회전만, 이동 없음
+          return { newOri, di: 0, dj: 0, type: "rotate" };
+        case "RT":
+          newOri = (ori + 1) % 8;
+          stepOri = ori;
+          return { newOri, di: 0, dj: 0, type: "rotate" };
+      }
+
+      const d = ORI_DIRS[stepOri];
+      return { newOri, di: d.di, dj: d.dj, type };
+    }
+
+    function buildStepsFromSegments() {
+      if (!segments || segments.length === 0) return [];
+      const chronological = [];
+
+      for (let s = 0; s < segments.length; s++) {
+        const seg = segments[s];
+        if (!seg.points || seg.points.length === 0) continue;
+
+        for (let k = 0; k < seg.points.length - 1; k++) {
+          const from = seg.points[k];
+          const to   = seg.points[k + 1];
+          chronological.push({ from, to, type: "draw" });
+        }
+
+        if (s < segments.length - 1) {
+          const nextSeg = segments[s + 1];
+          if (seg.points.length > 0 && nextSeg.points.length > 0) {
+            const from = seg.points[seg.points.length - 1];
+            const to   = nextSeg.points[0];
+            if (from !== to) {
+              chronological.push({ from, to, type: "jump" });
+            }
+          }
+        }
+      }
+
+      return chronological;
+    }
+
+    function encodeStep(ori, fromIndex, toIndex, type) {
+      const from = indexToIJ(fromIndex);
+      const to   = indexToIJ(toIndex);
+      const di   = to.i - from.i;
+      const dj   = to.j - from.j;
+
+      // Jump: 현재 바라보는 방향으로 1칸일 때만 J로 표현
+      if (type === "jump") {
+        const d = ORI_DIRS[ori];
+        if (d.di === di && d.dj === dj) {
+          return { code: "J", newOri: ori };
+        } else {
+          return null;
+        }
+      }
+
+      // Draw: F/L/R/B/LFD/RFD/LBD/RBD 중 하나
+      for (const c of DRAW_CODES) {
+        const res = applyCommand(ori, c);
+        if (res.type !== "draw") continue;
+        if (res.di === di && res.dj === dj) {
+          return { code: c, newOri: res.newOri };
+        }
+      }
+      return null;
+    }
+
+    function encodeCurrentPath() {
+      if (!startPoint) return { ok:false, error:"START가 설정되지 않았습니다.", commands:[] };
+
+      const steps = buildStepsFromSegments();
+      if (steps.length === 0) {
+        return { ok:false, error:"경로가 없습니다.", commands:[] };
+      }
+
+      const { i: si, j: sj } = indexToIJ(steps[0].from);
+      if (!isOnEdge(si, sj)) {
+        return { ok:false, error:"START는 격자 바깥 가장자리여야 합니다.", commands:[] };
+      }
+
+      let ori = initialOrientationForStart(si, sj);
+      const cmds = [];
+
+      for (let k = 0; k < steps.length; k++) {
+        const st = steps[k];
+        const encoded = encodeStep(ori, st.from, st.to, st.type);
+        if (!encoded) {
+          return {
+            ok: false,
+            error: `해당 움직임을 암호로 표현할 수 없습니다. (step ${k+1})`,
+            commands: []
+          };
+        }
+        cmds.push(encoded.code);
+        ori = encoded.newOri;
+      }
+
+      return { ok:true, error:"", commands:cmds };
+    }
+
+// 정답 암호 리스트(ANSWER_CODES[level])를
+// 시작 인덱스/방향 기준으로 "from/to/type" step 배열로 디코드
+function decodeCommandsToSteps(commands, startIndex, startOri) {
+  let steps = [];
+  let ori = startOri;
+  let currentIndex = startIndex;
+
+  for (let k = 0; k < commands.length; k++) {
+    const cmd = commands[k];
+    const res = applyCommand(ori, cmd);
+
+    if (!res) {
+      return {
+        ok: false,
+        error: `정답 코드의 ${k + 1}번째 명령(${cmd})를 해석할 수 없습니다.`,
+        steps: []
+      };
+    }
+
+    // LT / RT 같은 회전만 있는 경우
+    if (res.type === "rotate") {
+      ori = res.newOri;
+      continue;
+    }
+
+    const { i, j } = indexToIJ(currentIndex);
+    const ni = i + res.di;
+    const nj = j + res.dj;
+
+    if (ni < 0 || ni >= GRID_SIZE || nj < 0 || nj >= GRID_SIZE) {
+      return {
+        ok: false,
+        error: `정답 코드가 격자 밖으로 나갑니다. (step ${k + 1})`,
+        steps: []
+      };
+    }
+
+    const nextIndex = ijToIndex(ni, nj);
+    steps.push({ from: currentIndex, to: nextIndex, type: res.type });
+    currentIndex = nextIndex;
+    ori = res.newOri;
+  }
+
+  return { ok: true, error: "", steps };
+}
+
+function compareSteps(ansSteps, playerSteps) {
+  if (ansSteps.length !== playerSteps.length) return false;
+  for (let i = 0; i < ansSteps.length; i++) {
+    const a = ansSteps[i];
+    const p = playerSteps[i];
+    if (a.type !== p.type || a.from !== p.from || a.to !== p.to) {
+      return false;
+    }
+  }
+  return true;
+}
+
+
+    // ====== ANSWER CHECK ======
+function onCheckAnswer() {
+  const ans = ANSWER_CODES[level];
+  if (!ans || !Array.isArray(ans) || ans.length === 0) {
+    setStatus("아직 이 레벨의 정답 코드가 설정되지 않았습니다.");
+    return;
+  }
+
+  // 1) 플레이어가 그린 경로를 steps로 가져오기
+  const playerSteps = buildStepsFromSegments();
+  if (playerSteps.length === 0) {
+    setStatus("경로가 없습니다. 먼저 그림을 그려주세요.");
+    resultMode = null;
+    resultTimer = 0;
+    confetti = [];
+    return;
+  }
+
+  // 2) 정답 코드를 같은 형식의 steps로 디코드
+  const sp = START_POINTS[level] || { i: 0, j: Math.floor(GRID_SIZE / 2) };
+  const startIndex = ijToIndex(sp.i, sp.j);
+  const startOri = initialOrientationForStart(sp.i, sp.j);
+
+  const decoded = decodeCommandsToSteps(ans, startIndex, startOri);
+  if (!decoded.ok) {
+    setStatus(decoded.error);
+    resultMode = null;
+    resultTimer = 0;
+    confetti = [];
+    return;
+  }
+
+  // 3) 두 step 배열을 비교 (좌표 기준)
+  const ok = compareSteps(decoded.steps, playerSteps);
+
+  if (ok) {
+    resultMode = "correct";
+    resultTimer = 180;
+    spawnConfetti();
+    setStatus("정답! 🎉");
+  } else {
+    resultMode = "wrong";
+    resultTimer = 180;
+    confetti = [];
+    setStatus("틀렸습니다. 다시 시도해 보세요.");
+  }
+}
+
+    function compareCommands(ans, player) {
+      if (ans.length !== player.length) return false;
+      for (let i = 0; i < ans.length; i++) {
+        if (ans[i] !== player[i]) return false;
+      }
+      return true;
+    }
+
+    // ====== MOUSE INTERACTION ======
+    function mousePressed() {
+      if (mouseX < 0 || mouseX > width || mouseY < 0 || mouseY > height) return;
+
+      const idx = findClickedPoint(mouseX, mouseY);
+      if (idx === -1) return;
+
+      handleClickOnPoint(idx);
+    }
+
+        function doubleClicked() {
+        if (currentPointIndex != null) {
+            activeSegment = null;
+            currentPointIndex = null;  // ★ 이 줄 추가
+            setStatus("선이 끊겼습니다. 다음 점부터 점프(J) 구간으로 인식됩니다.");
+        }
+        return false;
+        }
+
+
+    function findClickedPoint(mx, my) {
+      let closestIndex = -1;
+      let closestDistSq = CLICK_RADIUS * CLICK_RADIUS;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        const dx = mx - p.x;
+        const dy = my - p.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= closestDistSq) {
+          closestIndex = i;
+          closestDistSq = d2;
+        }
+      }
+      return closestIndex;
+    }
+    function handleClickOnPoint(idx) {
+    const p = points[idx];
+    if (!startPoint) return;
+
+    // 1) 세그먼트가 끊어진 상태(currentPointIndex === null)라면
+    //    → 새 세그먼트의 "첫 점"만 만든다 (이게 점프의 도착점이 됨)
+    if (currentPointIndex == null) {
+        activeSegment = { points: [idx] };  // ★ 이전 점은 넣지 않음
+        segments.push(activeSegment);
+        currentPointIndex = idx;
+        return; // 여기서는 인접 체크도 하지 않음
+    }
+
+    // 2) 평소처럼 기존 세그먼트에 이어서 그릴 때
+    const lastP = points[currentPointIndex];
+    const di = p.i - lastP.i;
+    const dj = p.j - lastP.j;
+
+    if (
+        Math.abs(di) > 1 ||
+        Math.abs(dj) > 1 ||
+        (di === 0 && dj === 0)
+    ) {
+        setStatus("인접한 점(상하좌우/대각선)으로만 이동할 수 있습니다.");
+        return;
+    }
+
+    if (!activeSegment) {
+        activeSegment = { points: [currentPointIndex] };
+        segments.push(activeSegment);
+    }
+
+    activeSegment.points.push(idx);
+    currentPointIndex = idx;
+    }
+
+
+    // ====== DRAW HELPERS ======
+    function drawGrid() {
+      stroke(210);
+      strokeWeight(1);
+      for (let i = 0; i < GRID_SIZE; i++) {
+        const y = MARGIN + i * spacing;
+        line(MARGIN, y, width - MARGIN, y);
+      }
+      for (let j = 0; j < GRID_SIZE; j++) {
+        const x = MARGIN + j * spacing;
+        line(x, MARGIN, x, height - MARGIN);
+      }
+    }
+
+    function drawPoints() {
+      noStroke();
+      fill(80);
+      const r = 5;
+      for (const p of points) {
+        if (startPoint && p.index === startPoint.index) continue;
+        circle(p.x, p.y, r * 2);
+      }
+    }
+
+    function drawSegments() {
+      stroke(20);
+      strokeWeight(3);
+      noFill();
+      for (const seg of segments) {
+        if (!seg.points || seg.points.length < 2) continue;
+        for (let k = 0; k < seg.points.length - 1; k++) {
+          const a = points[seg.points[k]];
+          const b = points[seg.points[k + 1]];
+          line(a.x, a.y, b.x, b.y);
+        }
+      }
+    }
+
+    function drawStartMarker() {
+      if (!startPoint) return;
+      stroke(0);
+      strokeWeight(1);
+      fill(34, 197, 94);
+      circle(startPoint.x, startPoint.y, 18);
+
+      noStroke();
+      fill(0);
+      textAlign(CENTER, TOP);
+      textSize(12);
+      text("START", startPoint.x, startPoint.y + 10);
+    }
+
+    // ====== RESULT OVERLAY (O / X) + CONFETTI ======
+    function drawResultOverlay() {
+      if (!resultMode || resultTimer <= 0) return;
+      resultTimer--;
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const gridW = width - 2 * MARGIN;
+      const baseR = gridW * 0.45;
+
+      if (resultMode === "correct") {
+        noFill();
+        stroke(46, 204, 113);
+        strokeWeight(14);
+        circle(cx, cy, baseR);
+      } else if (resultMode === "wrong") {
+        stroke(220, 38, 38);
+        strokeWeight(14);
+        const r = baseR * 0.7;
+        line(cx - r, cy - r, cx + r, cy + r);
+        line(cx - r, cy + r, cx + r, cy - r);
+      }
+    }
+
+    function spawnConfetti() {
+      confetti = [];
+      const count = 200;
+      for (let i = 0; i < count; i++) {
+        confetti.push({
+          x: random(0, width),
+          y: random(-height, 0),
+          vx: random(-0.5, 0.5),
+          vy: random(2, 5),
+          size: random(4, 8),
+          col: color(random(200,255), random(150,230), random(80,200))
+        });
+      }
+    }
+
+    function drawConfetti() {
+      if (!resultMode || resultMode !== "correct" || confetti.length === 0) return;
+      noStroke();
+      for (const c of confetti) {
+        fill(c.col);
+        rect(c.x, c.y, c.size, c.size);
+        c.x += c.vx;
+        c.y += c.vy;
+        if (c.y > height + 20) {
+          c.y = random(-height, 0);
+          c.x = random(0, width);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
