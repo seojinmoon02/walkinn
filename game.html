@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/p5@1.7.0/lib/p5.min.js"></script>
   <style>
+    :root {
+      --accent: #ef4136;
+      --accent-soft: #fef4f3;
+      --text-main: #111827;
+      --text-sub: #6b7280;
+      --border-soft: #e5e7eb;
+    }
+
     body {
       margin: 0;
       padding: 0;
@@ -14,11 +22,20 @@
       flex-direction: column;
       align-items: center;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f4f4;
+      background: #ffffff;
+      color: var(--text-main);
     }
+
+    /* 캔버스 영역 – 비율/사이즈는 그대로, 외곽선만 SVG 스타일 */
     main {
       margin-top: 18px;
     }
+    main canvas {
+      background: #ffffff;
+      box-shadow: 0 0 0 1px #ffffff, 0 2px 8px rgba(0, 0, 0, 0.08);
+      border-radius: 4px;
+    }
+
     #ui {
       width: 700px;
       max-width: 95vw;
@@ -28,57 +45,92 @@
       gap: 10px;
       font-size: 14px;
     }
+
     #topRow {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 6px;
     }
+
     #levelTitle {
       font-weight: 700;
       font-size: 18px;
+      letter-spacing: 0.02em;
+      color: var(--accent);
     }
+
     #buttons {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+
     button {
       padding: 6px 12px;
-      border-radius: 6px;
-      border: none;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
       cursor: pointer;
       font-size: 14px;
       font-weight: 500;
-      background: #111827;
-      color: white;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
       white-space: nowrap;
+      transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease,
+        transform 0.08s ease;
     }
+
     button.secondary {
-      background: #6b7280;
+      background: #ffffff;
+      color: var(--accent);
+      box-shadow: none;
     }
+
     button:hover {
-      filter: brightness(1.05);
+      filter: none;
+      background: #ff5c4e;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+      transform: translateY(-1px);
     }
+
+    button.secondary:hover {
+      background: var(--accent-soft);
+      color: var(--accent);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+
     #status {
       padding: 6px 10px;
-      background: white;
+      background: #ffffff;
       border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      border: 1px solid var(--border-soft);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+      color: var(--text-sub);
     }
+
     #instructions {
       padding: 8px 10px;
-      background: white;
+      background: var(--accent-soft);
       border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      border: 1px solid var(--accent);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
       line-height: 1.5;
+      color: var(--text-main);
     }
+
     #instructions b {
       font-weight: 600;
+      color: var(--accent);
     }
   </style>
+
 </head>
 <body>
   <main></main>
@@ -86,23 +138,24 @@
   <div id="ui">
     <div id="topRow">
       <div>
-        <div id="levelTitle">Level ?</div>
+        <div id="levelTitle">TRIP 0?</div>
       </div>
       <div id="buttons">
         <button id="backBtn" class="secondary">← Back</button>
         <button id="resetBtn" class="secondary">Reset</button>
-        <button id="checkBtn">정답 확인</button>
+        <button id="undoBtn" class="secondary">Undo</button>  <!-- ★ 추가 -->
+        <button id="checkBtn">Check Answer</button>
       </div>
     </div>
 
-    <div id="status">START에서 시작해서 마우스로 경로를 그려보세요.</div>
+    <div id="status">Start from the START point and draw your path.</div>
 
     <div id="instructions">
-      <b>마우스 조작</b><br>
-      - 녹색 START 점에서 인접한 점을 클릭해 선을 이어 나갑니다.<br>
-      - 바로 앞 점에서 위·아래·좌·우·대각선으로만 이동할 수 있습니다.<br>
-      - 더블클릭하면 선이 끊기고, 다음 클릭부터는 점프(J)가 됩니다.<br>
-      - 모두 그린 뒤 <b>정답 확인</b> 버튼을 누르세요.
+    <b>Mouse Controls</b><br>
+    - Click an adjacent point to extend your path from START.<br>
+    - You can only move up, down, left, right, or diagonally.<br>
+    - Double-click to break the line; the next point becomes a jump (J).<br>
+    - After finishing your route, press <b>Check Answer</b>.
     </div>
   </div>
 
@@ -197,10 +250,12 @@
 
     let level = 1;
 
-    let statusDiv, backBtn, resetBtn, checkBtn, levelTitle;
+    let statusDiv, backBtn, resetBtn, checkBtn, levelTitle, undoBtn;
     let resultMode = null; // "correct" | "wrong" | null
     let resultTimer = 0;
     let confetti = [];
+
+    
 
     // ====== P5 SETUP / DRAW ======
     function setup() {
@@ -217,7 +272,7 @@
     }
 
     function draw() {
-      background(240);
+      background('#ef4136');
       drawGrid();
       drawSegments();
       drawPoints();
@@ -233,26 +288,40 @@
       level = (!isNaN(lv) && lv >= 1 && lv <= 12) ? lv : 1;
     }
 
-    function cacheDom() {
-      statusDiv   = document.getElementById("status");
-      backBtn     = document.getElementById("backBtn");
-      resetBtn    = document.getElementById("resetBtn");
-      checkBtn    = document.getElementById("checkBtn");
-      levelTitle  = document.getElementById("levelTitle");
+function cacheDom() {
+  statusDiv   = document.getElementById("status");
+  backBtn     = document.getElementById("backBtn");
+  resetBtn    = document.getElementById("resetBtn");
+  checkBtn    = document.getElementById("checkBtn");
+  levelTitle  = document.getElementById("levelTitle");
+  undoBtn     = document.getElementById("undoBtn");  // ★ 추가
 
-      levelTitle.textContent = `Level ${level}`;
+  levelTitle.textContent = `TRIP 0${level}`;
 
-      backBtn.addEventListener("click", () => {
-        window.location.href = "landing.html";
-      });
+  backBtn.addEventListener("click", () => {
+    window.location.href = "landing.html";
+  });
 
-      resetBtn.addEventListener("click", () => {
-        initGameState();
-        setStatus("경로를 다시 그릴 수 있습니다.");
-      });
+  resetBtn.addEventListener("click", () => {
+    initGameState();
+    setStatus("경로를 다시 그릴 수 있습니다.");
+  });
 
-      checkBtn.addEventListener("click", onCheckAnswer);
+  checkBtn.addEventListener("click", onCheckAnswer);
+
+  // ★ Undo 버튼 클릭
+  undoBtn.addEventListener("click", () => {
+    undoLastStep();
+  });
+
+  // ★ Cmd+Z / Ctrl+Z 단축키
+  window.addEventListener("keydown", (e) => {
+    if ((e.key === "z" || e.key === "Z") && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      undoLastStep();
     }
+  });
+}
 
     function initGameState() {
       segments = [];
@@ -272,7 +341,8 @@
       segments.push(activeSegment);
       currentPointIndex = idx;
 
-      setStatus("START에서부터 경로를 그려보세요.");
+      setStatus("Draw your path starting from START.");
+
     }
 
     function setStatus(msg) {
@@ -562,12 +632,12 @@ function onCheckAnswer() {
     resultMode = "correct";
     resultTimer = 180;
     spawnConfetti();
-    setStatus("정답! 🎉");
+    setStatus("Correct! 🎉");
   } else {
     resultMode = "wrong";
     resultTimer = 180;
     confetti = [];
-    setStatus("틀렸습니다. 다시 시도해 보세요.");
+    setStatus("Incorrect. Try again.");
   }
 }
 
@@ -653,55 +723,113 @@ function onCheckAnswer() {
 
     // ====== DRAW HELPERS ======
     function drawGrid() {
-      stroke(210);
-      strokeWeight(1);
-      for (let i = 0; i < GRID_SIZE; i++) {
+    push();
+
+    // ✅ 그리드 배경 (원하면 여기 색 바꾸면 됨! 예: 아주 연한 아이보리)
+    noStroke();
+    fill(255, 250, 245); // 원하는 색으로 변경 가능
+    rect(MARGIN, MARGIN, width - 2 * MARGIN, height - 2 * MARGIN);
+
+    // ✅ 점선 설정
+    stroke(255, 200, 195);      // 연한 빨강 계열
+    strokeWeight(1);
+    drawingContext.setLineDash([4, 4]); // [선 길이, 공백 길이]
+
+    // 가로선
+    for (let i = 0; i < GRID_SIZE; i++) {
         const y = MARGIN + i * spacing;
         line(MARGIN, y, width - MARGIN, y);
-      }
-      for (let j = 0; j < GRID_SIZE; j++) {
+    }
+
+    // 세로선
+    for (let j = 0; j < GRID_SIZE; j++) {
         const x = MARGIN + j * spacing;
         line(x, MARGIN, x, height - MARGIN);
-      }
     }
+
+    // ✅ 다른 그리기에는 점선 안 먹도록 리셋
+    drawingContext.setLineDash([]);
+
+    pop();
+    }
+
 
     function drawPoints() {
-      noStroke();
-      fill(80);
-      const r = 5;
-      for (const p of points) {
+    push();
+    noStroke();
+    fill(239, 65, 54, 150);   // #EF4136 기반, 약간 반투명 (alpha 150)
+    const r = 4;
+
+    for (const p of points) {
         if (startPoint && p.index === startPoint.index) continue;
         circle(p.x, p.y, r * 2);
-      }
     }
+    pop();
+}
+
 
     function drawSegments() {
-      stroke(20);
-      strokeWeight(3);
-      noFill();
-      for (const seg of segments) {
+    if (!segments || segments.length === 0) return;
+
+    push();                       // ← 다른 그리기 설정 보호
+    stroke(239, 65, 54);          // #EF4136 빨간색
+    strokeWeight(5);
+    noFill();
+
+    for (const seg of segments) {
         if (!seg.points || seg.points.length < 2) continue;
         for (let k = 0; k < seg.points.length - 1; k++) {
-          const a = points[seg.points[k]];
-          const b = points[seg.points[k + 1]];
-          line(a.x, a.y, b.x, b.y);
+        const a = points[seg.points[k]];
+        const b = points[seg.points[k + 1]];
+        line(a.x, a.y, b.x, b.y);
         }
-      }
     }
+
+    pop();
+    }
+
 
     function drawStartMarker() {
-      if (!startPoint) return;
-      stroke(0);
-      strokeWeight(1);
-      fill(34, 197, 94);
-      circle(startPoint.x, startPoint.y, 18);
+    if (!startPoint) return;
+    push();
 
-      noStroke();
-      fill(0);
-      textAlign(CENTER, TOP);
-      textSize(12);
-      text("START", startPoint.x, startPoint.y + 10);
+    // 기본 좌표 (그리드 위의 START 점)
+    const sx = startPoint.x;
+    const sy = startPoint.y;
+
+    // START가 서 있는 변 기준으로 바라보는 방향 계산
+    const ori = initialOrientationForStart(startPoint.i, startPoint.j);
+    const d   = ORI_DIRS[ori]; // {di, dj}
+
+    // --- 위치를 그리드 "바깥" 쪽으로 살짝 이동 ---
+    const shift = 22; // 숫자 키우면 더 바깥으로 나감
+    const cx = sx - d.dj * shift;
+    const cy = sy - d.di * shift;
+
+    // --- pulsing 스케일 계산 (살짝 숨 쉬듯이) ---
+    const baseSize = 18; // 기본 삼각형 크기
+    const pulse    = 1 + 0.03 * Math.sin(millis() / 300); // 0.88 ~ 1.12 정도 반복
+    const size     = baseSize * pulse;
+
+    // 삼각형 꼭짓점 계산 (tip = 격자 안쪽, left/right = 바깥쪽)
+    const tipX   = cx + d.dj * size;
+    const tipY   = cy + d.di * size;
+    const leftX  = cx + (-d.di) * size * 0.6;
+    const leftY  = cy + ( d.dj) * size * 0.6;
+    const rightX = cx + ( d.di) * size * 0.6;
+    const rightY = cy + (-d.dj) * size * 0.6;
+
+    // 스타일 (기존 색 유지)
+    stroke(225);
+    strokeWeight(1 * pulse);   // 살짝 같이 숨 쉬는 느낌
+    fill(183, 245, 39);
+
+    triangle(tipX, tipY, leftX, leftY, rightX, rightY);
+
+    pop();
     }
+
+
 
     // ====== RESULT OVERLAY (O / X) + CONFETTI ======
     function drawResultOverlay() {
@@ -741,6 +869,64 @@ function onCheckAnswer() {
         });
       }
     }
+
+    function undoLastStep() {
+  if (!segments || segments.length === 0) return;
+
+  // 뒤에서부터 "실제 점이 있는" 마지막 세그먼트 찾기
+  let s = segments.length - 1;
+  while (s >= 0 && (!segments[s].points || segments[s].points.length === 0)) {
+    s--;
+  }
+  if (s < 0) return;
+
+  let seg = segments[s];
+
+  if (seg.points.length > 1) {
+    // ★ 마지막 점 하나만 제거
+    seg.points.pop();
+    currentPointIndex = seg.points[seg.points.length - 1];
+    activeSegment = seg;
+  } else {
+    // 이 세그먼트엔 점이 1개뿐 → 세그먼트 자체를 제거
+    segments.splice(s, 1);
+
+    if (segments.length === 0) {
+      // 완전히 비어 버리면 START만 있는 기본 상태로 복원
+      if (startPoint) {
+        const idx = startPoint.index;
+        const baseSeg = { points: [idx] };
+        segments = [baseSeg];
+        activeSegment = baseSeg;
+        currentPointIndex = idx;
+      } else {
+        activeSegment = null;
+        currentPointIndex = null;
+      }
+    } else {
+      // 마지막 세그먼트의 마지막 점을 현재 위치로
+      const lastSeg = segments[segments.length - 1];
+      if (lastSeg.points && lastSeg.points.length > 0) {
+        activeSegment = lastSeg;
+        currentPointIndex = lastSeg.points[lastSeg.points.length - 1];
+      } else {
+        activeSegment = null;
+        currentPointIndex = null;
+      }
+    }
+  }
+
+  // 혹시 남아 있을 수 있는 빈 세그먼트 정리
+  segments = segments.filter(seg => seg.points && seg.points.length > 0);
+
+  // 결과 표시(동그라미/X/컨페티) 초기화
+  resultMode = null;
+  resultTimer = 0;
+  confetti = [];
+
+  setStatus("마지막 움직임을 취소했습니다.");
+}
+
 
     function drawConfetti() {
       if (!resultMode || resultMode !== "correct" || confetti.length === 0) return;
